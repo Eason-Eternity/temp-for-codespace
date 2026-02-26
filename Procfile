@@ -1,1 +1,1 @@
-web: python my_save_bot.py
+web: python ./my_save_bot.py
