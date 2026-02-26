@@ -1,71 +1,55 @@
 import os
 import asyncio
+import logging
 from telethon import TelegramClient, events
 
-# ===== 配置区 =====
-API_ID = 38474201
-API_HASH = '73cf36ca5463deb34d9c52723448e729'
-PHONE_NUMBER = '+8619822307092'
-SAVE_PATH = './downloads'
+# 设置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# 代理配置（用 Clash/V2Ray 的 HTTP 端口）
-proxy = ('http', '127.0.0.1', 7890)  # 换成 http  # 元组格式：(协议, 地址, 端口)
+# ===== 配置区 =====
+API_ID = int(os.environ.get("API_ID", 38474201))
+API_HASH = os.environ.get("API_HASH", "73cf36ca5463deb34d9c52723448e729")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8461479543:AAEffIOuZ8c2rjFmi-IKcSM4cKcEdc4IOmM")
+SAVE_PATH = "./downloads"
 # ===== 配置结束 =====
 
 os.makedirs(SAVE_PATH, exist_ok=True)
 
-# 创建客户端，明确传入 proxy 参数
-client = TelegramClient(
-    'my_save_session',
-    API_ID,
-    API_HASH,
-    proxy=proxy  # 这一行必须有
-)
+# 创建客户端（不带代理，因为服务器在国外）
+bot = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
-@client.on(events.NewMessage)
+@bot.on(events.NewMessage)
 async def handler(event):
     try:
-        if not event.out:
-            return
+        # 只处理有文件的消息
+        if event.message.file:
+            file_name = event.message.file.name or f"file_{event.message.id}"
+            file_size = event.message.file.size / 1024 / 1024
 
-        if event.message.media:
-            # 获取文件名
-            if hasattr(event.message.media, 'document'):
-                doc = event.message.media.document
-                file_name = None
-                for attr in doc.attributes:
-                    if hasattr(attr, 'file_name'):
-                        file_name = attr.file_name
-                        break
-                if not file_name:
-                    file_name = f"document_{doc.id}.bin"
-                file_size = doc.size / 1024 / 1024
-            elif hasattr(event.message.media, 'photo'):
-                file_name = f"photo_{event.message.id}.jpg"
-                file_size = 0
-            else:
-                return
+            await event.reply(f"📥 收到文件，正在保存 ({file_size:.2f} MB)...")
 
-            print(f"📥 收到: {file_name} ({file_size:.2f} MB)")
             file_path = await event.message.download_media(file=SAVE_PATH)
-            await event.reply(f"✅ 已保存: {file_name}")
-            print(f"✅ 已保存: {file_path}")
+
+            await event.reply(
+                f"✅ 保存成功！\n"
+                f"📄 {file_name}\n"
+                f"📦 {file_size:.2f} MB"
+            )
+            logger.info(f"已保存: {file_path}")
+
+        # 处理 /start 命令
+        elif event.message.text and event.message.text.startswith('/start'):
+            await event.reply("👋 发文件给我，自动保存（支持2GB）")
 
     except Exception as e:
-        print(f"❌ 错误: {str(e)}")
-
-@client.on(events.NewMessage(pattern='/start'))
-async def start(event):
-    await event.reply("👋 发文件给我，自动保存（支持2GB）")
+        logger.error(f"错误: {str(e)}")
+        await event.reply(f"❌ 保存失败：{str(e)}")
 
 async def main():
-    print("🚀 机器人启动中...")
-    print(f"📁 保存路径: {os.path.abspath(SAVE_PATH)}")
-    print(f"🌐 代理: {proxy[0]}://{proxy[1]}:{proxy[2]}")
-    
-    await client.start(phone=PHONE_NUMBER)
-    print("✅ 登录成功！等待消息...")
-    await client.run_until_disconnected()
+    logger.info("🚀 机器人启动中...")
+    logger.info(f"📁 保存路径: {os.path.abspath(SAVE_PATH)}")
+    await bot.run_until_disconnected()
 
 if __name__ == '__main__':
     asyncio.run(main())
